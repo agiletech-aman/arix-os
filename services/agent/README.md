@@ -1,4 +1,4 @@
-# Arix Agent (v0.2)
+# Arix Agent (v0.3)
 
 FastAPI service that tracks the lifecycle of AI-OS tasks.
 
@@ -8,7 +8,8 @@ action that affects files, accounts, networks, or the operating system must go
 through the `awaiting_approval` state and require explicit user approval; the
 state machine does not allow `executing` to be reached without it.
 
-> **Storage is in memory.** All tasks disappear when the server restarts.
+> **Storage is SQLite.** Tasks persist across restarts in `arix.db` next to
+> `main.py` (git-ignored). Set `ARIX_DB_PATH` to use another file.
 
 ## Setup
 
@@ -48,7 +49,7 @@ Interactive docs: http://127.0.0.1:2006/docs
 | verifying | completed, cancelled, failed |
 | completed / failed / cancelled | none (terminal) |
 
-New tasks start as `queued`. Nothing in v0.2 advances them further, so no task
+New tasks start as `queued`. Nothing in v0.3 advances them further, so no task
 is ever reported `completed` automatically.
 
 ## API

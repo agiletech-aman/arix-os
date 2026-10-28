@@ -4,16 +4,24 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 
-from main import InvalidTransitionError, TaskStatus, app, tasks, transition_task
+import main
+from main import InvalidTransitionError, TaskResponse, TaskStatus, app, transition_task
+from store import TaskStore
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def reset_tasks():
-    tasks.clear()
-    yield
-    tasks.clear()
+def fresh_store(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "store", TaskStore(tmp_path / "test.db"))
+
+
+def _load(task_id) -> TaskResponse:
+    return TaskResponse(**main.store.get(task_id))
+
+
+def _force_status(task_id, status):
+    main.store.update_status(task_id, status.value, main.utcnow())
 
 
 def test_health():
@@ -74,7 +82,7 @@ def test_create_task_shape_and_utc_timestamps():
 @pytest.mark.parametrize("payload", [{"goal": ""}, {"goal": " \n\t "}, {}])
 def test_invalid_goal_is_rejected(payload):
     assert client.post("/v1/tasks", json=payload).status_code == 422
-    assert tasks == {}
+    assert main.store.list_newest_first() == []
 
 
 def test_list_tasks_newest_first():
@@ -108,16 +116,16 @@ def test_cancel_unknown_task_returns_404():
 )
 def test_cancel_finished_task_returns_409_and_keeps_status(status):
     task = _create()
-    tasks[task["id"]].status = status
+    _force_status(task["id"], status)
 
     response = client.post(f"/v1/tasks/{task['id']}/cancel")
 
     assert response.status_code == 409
-    assert tasks[task["id"]].status == status
+    assert _load(task["id"]).status == status
 
 
 def test_valid_transition_chain_updates_timestamp():
-    task = tasks[_create()["id"]]
+    task = _load(_create()["id"])
     before = task.updated_at
 
     for status in [
@@ -145,8 +153,8 @@ def test_valid_transition_chain_updates_timestamp():
     ],
 )
 def test_invalid_transitions_raise(start, target):
-    task = tasks[_create()["id"]]
-    task.status = start
+    task = _load(_create()["id"])
+    task.status = start  # in-memory only; transition_task does not touch storage
 
     with pytest.raises(InvalidTransitionError):
         transition_task(task, target)
@@ -158,3 +166,19 @@ def test_queued_task_is_never_reported_completed():
     task = _create()
 
     assert client.get(f"/v1/tasks/{task['id']}").json()["status"] == "queued"
+
+
+def test_tasks_survive_restart(tmp_path, monkeypatch):
+    db = tmp_path / "restart.db"
+    monkeypatch.setattr(main, "store", TaskStore(db))
+    first = _create("persist me")
+    cancelled = _create("cancel me")
+    client.post(f"/v1/tasks/{cancelled['id']}/cancel")
+
+    # Simulate a restart: a brand-new store opened on the same file.
+    monkeypatch.setattr(main, "store", TaskStore(db))
+
+    assert client.get(f"/v1/tasks/{first['id']}").json() == first
+    body = client.get("/v1/tasks").json()
+    assert [t["id"] for t in body["tasks"]] == [cancelled["id"], first["id"]]
+    assert body["tasks"][0]["status"] == "cancelled"
