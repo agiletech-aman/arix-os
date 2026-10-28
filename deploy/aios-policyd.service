@@ -1,0 +1,36 @@
+[Unit]
+Description=AI-OS Policy Engine
+After=local-fs.target
+
+[Service]
+Type=simple
+User=aios-policy
+Group=aios-policy
+SupplementaryGroups=aios-agents aios-admin
+RuntimeDirectory=aios
+RuntimeDirectoryMode=0755
+UMask=0077
+Environment=PYTHONPATH=/opt/aios PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m aios.policy.daemon \
+  --policy /etc/aios/policy.toml \
+  --sandbox /var/lib/aios/sandbox \
+  --audit /var/log/aios/audit.jsonl \
+  --agent-socket /run/aios/agent.sock --agent-group aios-agents \
+  --admin-socket /run/aios/admin.sock --admin-group aios-admin
+Restart=on-failure
+
+# hardening: the service can only touch its sandbox and its log
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/aios /var/log/aios
+
+[Install]
+WantedBy=multi-user.target

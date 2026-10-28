@@ -4,6 +4,11 @@ Sandbox folder: $AIOS_SANDBOX (default ~/aios-sandbox).
 Policy file:    --policy FILE or $AIOS_POLICY (default: built-in policy).
 Audit log:      $AIOS_AUDIT (default ~/.aios/audit.jsonl).
 `confirm`-level operations (e.g. delete) need --yes, or a y/N prompt on a terminal.
+
+Service mode:   --socket PATH or $AIOS_SOCKET talks to the policy service
+(aios.policy.daemon) instead of running policy in-process. There, approvals are
+made by a human with `python -m aios.ctl approve <id>`, then re-run with
+--approval <id> (confirm level) or just re-run (ask_once level).
 """
 
 import argparse
@@ -12,6 +17,7 @@ import os
 import sys
 
 from aios.policy import AuditLog, PolicyEngine, PolicyError, load_policy
+from aios.policy.client import PolicyClient
 from aios.tools import FileTool
 
 
@@ -35,20 +41,28 @@ def main(argv=None) -> int:
     parser.add_argument("--append", action="store_true")
     parser.add_argument("--policy", default=os.environ.get("AIOS_POLICY"))
     parser.add_argument("--yes", "-y", action="store_true", help="approve confirm-level ops")
+    parser.add_argument("--socket", default=os.environ.get("AIOS_SOCKET"))
+    parser.add_argument("--approval", help="approval id (service mode, confirm level)")
     args = parser.parse_args(argv)
 
-    try:
-        policy = load_policy(args.policy)
-    except PolicyError as e:
-        print(json.dumps({"ok": False, "error": str(e), "error_code": "POLICY_LOAD_ERROR"}, indent=2))
-        return 2
+    extra = {}
+    if args.socket:
+        tool = PolicyClient(args.socket)
+        if args.approval:
+            extra["approval_id"] = args.approval
+    else:
+        try:
+            policy = load_policy(args.policy)
+        except PolicyError as e:
+            print(json.dumps({"ok": False, "error": str(e), "error_code": "POLICY_LOAD_ERROR"}, indent=2))
+            return 2
 
-    tool = PolicyEngine(
-        FileTool(os.environ.get("AIOS_SANDBOX", "~/aios-sandbox")),
-        policy,
-        audit=AuditLog(os.environ.get("AIOS_AUDIT", "~/.aios/audit.jsonl")),
-        confirm=_make_confirm(args.yes),
-    )
+        tool = PolicyEngine(
+            FileTool(os.environ.get("AIOS_SANDBOX", "~/aios-sandbox")),
+            policy,
+            audit=AuditLog(os.environ.get("AIOS_AUDIT", "~/.aios/audit.jsonl")),
+            confirm=_make_confirm(args.yes),
+        )
 
     op, kwargs = args.operation, {}
     if op in {"create", "update"}:
@@ -62,7 +76,7 @@ def main(argv=None) -> int:
     elif op != "list_trash":
         kwargs = {"path": args.path}
 
-    result = tool.call(op, **kwargs)
+    result = tool.call(op, **kwargs, **extra)
     print(json.dumps(result.to_dict(), indent=2))
     return 0 if result.ok else 1
 

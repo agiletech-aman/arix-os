@@ -20,7 +20,8 @@ def _redact(args: dict) -> dict:
 
 
 class AuditLog:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, mode: int = 0o600):
+        self.mode = mode
         self.path = Path(path).expanduser()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
@@ -39,7 +40,7 @@ class AuditLog:
         }
         line = json.dumps(entry, ensure_ascii=False, default=str) + "\n"
         with self._lock:
-            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, self.mode)
             try:
                 os.write(fd, line.encode())
             finally:

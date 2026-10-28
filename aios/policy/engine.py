@@ -20,6 +20,11 @@ class PolicyEngine:
         self.confirm = confirm
         self.tool_name = tool_name or type(tool).__name__
         self.OPERATIONS = tuple(getattr(tool, "OPERATIONS", ()))
+        # Operations the user already approved for this session (L1 / ask_once).
+        self.session_grants: set[str] = set()
+
+    def revoke_session(self) -> None:
+        self.session_grants.clear()
 
     def _deny(self, op, args, decision, reason, code, msg) -> ToolResult:
         res = ToolResult(ok=False, error=msg, error_code=code,
@@ -73,7 +78,9 @@ class PolicyEngine:
                               f"{operation} denied by policy ({reason})")
 
         decision = "allow"
-        if level is Level.CONFIRM:
+        if level is Level.ASK_ONCE and operation in self.session_grants:
+            decision = "session"
+        elif level in (Level.ASK_ONCE, Level.CONFIRM):
             approved = False
             if self.confirm is not None:
                 try:
@@ -84,6 +91,8 @@ class PolicyEngine:
                 return self._deny(operation, args, "confirm", reason, "CONFIRMATION_REQUIRED",
                                   f"{operation} needs confirmation ({reason})")
             decision = "confirmed"
+            if level is Level.ASK_ONCE:
+                self.session_grants.add(operation)
 
         try:
             res = self.tool.call(operation, **args)

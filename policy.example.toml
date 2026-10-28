@@ -1,4 +1,4 @@
-# AI-OS policy. Levels: allow | confirm | deny.  Strictest match wins.
+# AI-OS policy. Levels: allow (L0) | ask_once (L1) | confirm (L2) | deny (L3).  Strictest match wins.
 default = "deny"            # any operation not listed below
 
 [operations]
@@ -6,7 +6,7 @@ read       = "allow"
 list_dir   = "allow"
 list_trash = "allow"
 create     = "allow"
-update     = "allow"
+update     = "ask_once"
 mkdir      = "allow"
 restore    = "allow"
 delete     = "confirm"
