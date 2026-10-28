@@ -82,6 +82,16 @@ class FileTool:
     def _rel(self, p: Path) -> str:
         return str(p.relative_to(self.root)) or "."
 
+    def canonical_path(self, path: str) -> str | None:
+        """Sandbox-relative path after resolving `..` and symlinks, or None if invalid.
+
+        Used by the Policy Engine so rules apply to where a path really points.
+        """
+        try:
+            return self._rel(self._resolve(path, allow_root=True))
+        except FileToolError:
+            return None
+
     def _check_size(self, content: str) -> None:
         if len(content.encode("utf-8")) > self.max_write_bytes:
             raise TooLarge(f"Content exceeds {self.max_write_bytes} bytes")

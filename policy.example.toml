@@ -1,0 +1,21 @@
+# AI-OS policy. Levels: allow | confirm | deny.  Strictest match wins.
+default = "deny"            # any operation not listed below
+
+[operations]
+read       = "allow"
+list_dir   = "allow"
+list_trash = "allow"
+create     = "allow"
+update     = "allow"
+mkdir      = "allow"
+restore    = "allow"
+delete     = "confirm"
+
+[[rules]]
+paths      = [".env", "*.env", "*.key", "*.pem", "secrets", "secrets/*"]
+operations = ["*"]
+level      = "deny"
+reason     = "protected path"
+
+[limits]
+max_content_bytes = 1048576
